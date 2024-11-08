@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            background: #1a1a1a;
+            font-family: Arial, sans-serif;
+            color: #fff;
+        }
+        .container {
+            text-align: center;
+            padding: 20px;
+        }
+        canvas {
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,255,200,0.2);
+            margin: 20px 0;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        button, select {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #2a2a2a;
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        button:hover, select:hover {
+            background: #3a3a3a;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 8px rgba(0,255,200,0.2);
+        }
+        .active {
+            background: #00ffc8;
+            color: #000;
+        }
+        .pattern-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        input[type="text"] {
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            background: #2a2a2a;
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Game of Life</h1>
+        <div class="controls">
+            <button id="startBtn">Start</button>
+            <button id="clearBtn">Clear</button>
+            <button id="randomBtn">Random</button>
+        </div>
+        <div class="pattern-controls">
+            <select id="patternSelect">
+                <option value="">Select Pattern</option>
+                <option value="glider">Glider</option>
+                <option value="blinker">Blinker</option>
+                <option value="pulsar">Pulsar</option>
+                <option value="gosperGliderGun">Gosper Glider Gun</option>
+                <option value="lwss">Lightweight Spaceship</option>
+            </select>
+            <input type="text" id="patternName" placeholder="Pattern name">
+            <button id="savePatternBtn">Save Pattern</button>
+            <button id="loadPatternBtn">Load Saved</button>
+        </div>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const randomBtn = document.getElementById('randomBtn');
+        const patternSelect = document.getElementById('patternSelect');
+        const patternName = document.getElementById('patternName');
+        const savePatternBtn = document.getElementById('savePatternBtn');
+        const loadPatternBtn = document.getElementById('loadPatternBtn');
+
+        const CELL_SIZE = 15;
+        const GRID_COLOR = '#2a2a2a';
+        const CELL_COLOR = '#00ffc8';
+
+        let width = Math.floor((window.innerWidth * 0.8) / CELL_SIZE) * CELL_SIZE;
+        let height = Math.floor((window.innerHeight * 0.6) / CELL_SIZE) * CELL_SIZE;
+        width = Math.min(width, 900);
+        height = Math.min(height, 600);
+
+        canvas.width = width;
+        canvas.height = height;
+
+        const COLS = Math.floor(width / CELL_SIZE);
+        const ROWS = Math.floor(height / CELL_SIZE);
+
+        let grid = createGrid();
+        let isRunning = false;
+        let animationId = null;
+
+        // Predefined patterns
+        const patterns = {
+            glider: [
+                [0, 1, 0],
+                [0, 0, 1],
+                [1, 1, 1]
+            ],
+            blinker: [
+                [1, 1, 1]
+            ],
+            pulsar: [
+                [0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+                [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+                [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+                [0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0],
+                [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+                [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+                [1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1],
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                [0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0]
+            ],
+            gosperGliderGun: [
+                [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1],
+                [0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1],
+                [1,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                [1,1,0,0,0,0,0,0,0,0,1,0,0,0,1,0,1,1,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+            ],
+            lwss: [
+                [0, 1, 1, 1, 1],
+                [1, 0, 0, 0, 1],
+                [0, 0, 0, 0, 1],
+                [1, 0, 0, 1, 0]
+            ]
+        };
+
+        function createGrid() {
+            return new Array(COLS).fill(null)
+                .map(() => new Array(ROWS).fill(false));
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = GRID_COLOR;
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i <= COLS; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * CELL_SIZE, 0);
+                ctx.lineTo(i * CELL_SIZE, height);
+                ctx.stroke();
+            }
+
+            for (let j = 0; j <= ROWS; j++) {
+                ctx.beginPath();
+                ctx.moveTo(0, j * CELL_SIZE);
+                ctx.lineTo(width, j * CELL_SIZE);
+                ctx.stroke();
+            }
+        }
+
+        function drawCells() {
+            ctx.fillStyle = CELL_COLOR;
+            for (let i = 0; i < COLS; i++) {
+                for (let j = 0; j < ROWS; j++) {
+                    if (grid[i][j]) {
+                        ctx.fillRect(
+                            i * CELL_SIZE + 1,
+                            j * CELL_SIZE + 1,
+                            CELL_SIZE - 2,
+                            CELL_SIZE - 2
+                        );
+                    }
+                }
+            }
+        }
+
+        function countNeighbors(x, y) {
+            let count = 0;
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    if (i === 0 && j === 0) continue;
+                    const col = (x + i + COLS) % COLS;
+                    const row = (y + j + ROWS) % ROWS;
+                    count += grid[col][row] ? 1 : 0;
+                }
+            }
+            return count;
+        }
+
+        function update() {
+            const newGrid = createGrid();
+            for (let i = 0; i < COLS; i++) {
+                for (let j = 0; j < ROWS; j++) {
+                    const neighbors = countNeighbors(i, j);
+                    if (grid[i][j]) {
+                        newGrid[i][j] = neighbors === 2 || neighbors === 3;
+                    } else {
+                        newGrid[i][j] = neighbors === 3;
+                    }
+                }
+            }
+            grid = newGrid;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            drawGrid();
+            drawCells();
+        }
+
+        function animate() {
+            update();
+            draw();
+            if (isRunning) {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+
+        function placePattern(pattern, startX, startY) {
+            const patternHeight = pattern.length;
+            const patternWidth = pattern[0].length;
+            
+            for (let i = 0; i < patternHeight; i++) {
+                for (let j = 0; j < patternWidth; j++) {
+                    const x = (startX + j + COLS) % COLS;
+                    const y = (startY + i + ROWS) % ROWS;
+                    grid[x][y] = pattern[i][j] === 1;
+                }
+            }
+            draw();
+        }
+
+        function saveCurrentPattern() {
+            const name = patternName.value.trim();
+            if (!name) {
+                alert('Please enter a pattern name');
+                return;
+            }
+
+            const savedPattern = [];
+            for (let j = 0; j < ROWS; j++) {
+                const row = [];
+                for (let i = 0; i < COLS; i++) {
+                    row.push(grid[i][j] ? 1 : 0);
+                }
+                savedPattern.push(row);
+            }
+
+            const savedPatterns = JSON.parse(localStorage.getItem('savedPatterns') || '{}');
+            savedPatterns[name] = savedPattern;
+            localStorage.setItem('savedPatterns', JSON.stringify(savedPatterns));
+            
+            // Update pattern select with new pattern
+            const option = document.createElement('option');
+            option.value = `saved:${name}`;
+            option.textContent = `Saved: ${name}`;
+            patternSelect.appendChild(option);
+            
+            patternName.value = '';
+            alert('Pattern saved successfully!');
+        }
+
+        function loadSavedPatterns() {
+            const savedPatterns = JSON.parse(localStorage.getItem('savedPatterns') || '{}');
+            const patternNames = Object.keys(savedPatterns);
+            
+            if (patternNames.length === 0) {
+                alert('No saved patterns found');
+                return;
+            }
+
+            const name = prompt('Enter pattern name to load:\n' + patternNames.join(', '));
+            if (name && savedPatterns[name]) {
+                grid = createGrid();
+                const pattern = savedPatterns[name];
+                placePattern(pattern, 0, 0);
+            }
+        }
+
+        // Event Listeners
+        canvas.addEventListener('click', (event) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const i = Math.floor(x / CELL_SIZE);
+            const j = Math.floor(y / CELL_SIZE);
+            grid[i][j] = !grid[i][j];
+            draw();
+        });
+
+        startBtn.addEventListener('click', () => {
+            isRunning = !isRunning;
+            startBtn.textContent = isRunning ? 'Stop' : 'Start';
+            startBtn.classList.toggle('active');
+            if (isRunning) {
+                animate();
+            } else {
+                cancelAnimationFrame(animationId);
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            grid = createGrid();
+            draw();
+        });
+
+        randomBtn.addEventListener('click', () => {
+            for (let i = 0; i < COLS; i++) {
+                for (let j = 0; j < ROWS; j++) {
+                    grid[i][j] = Math.random() > 0.85;
+                }
+            }
+            draw();
+        });
+
+        patternSelect.addEventListener('change', (e) => {
+            if (!e.target.value) return;
+            
+            if (e.target.value.startsWith('saved:')) {
+                const name = e.target.value.split(':')[1];
+                const savedPatterns = JSON.parse(localStorage.getItem('savedPatterns') || '{}');
+                if (savedPatterns[name]) {
+                    grid = createGrid();
+                    placePattern(savedPatterns[name], 0, 0);
+                }
+            } else {
+                const pattern = patterns[e.target.value];
+                if (pattern) {
+                    grid = createGrid();
+                    const startX = Math.floor(COLS / 2 - pattern[0].length / 2);
+                    const startY = Math.floor(ROWS / 2 - pattern.length / 2);
+                    placePattern(pattern, startX, startY);
+                }
+            }
+            
+            patternSelect.value = '';
+        });
+
+        savePatternBtn.addEventListener('click', saveCurrentPattern);
+        loadPatternBtn.addEventListener('click', loadSavedPatterns);
+
+        // Initialize
+        draw();
+
+        // Load saved patterns into select
+        const savedPatterns = JSON.parse(localStorage.getItem('savedPatterns') || '{}');
+        Object.keys(savedPatterns).forEach(name => {
+            const option = document.createElement('option');
+            option.value = `saved:${name}`;
+            option.textContent = `Saved: ${name}`;
+            patternSelect.appendChild(option);
+        });
+    </script>
+</body>
+</html>
